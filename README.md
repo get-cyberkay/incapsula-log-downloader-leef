@@ -2,6 +2,24 @@
 
 > A Python script for downloading log files from Imperva CloudWAF
 
+## Acknowledgment
+
+This project is based on Imperva's original `incapsula-logs-downloader` repository and keeps that work as the foundation for log retrieval, decryption, file handling, and syslog delivery.
+
+Original project:
+- https://github.com/imperva/incapsula-logs-downloader
+
+## Improvements In This Fork
+
+- Added configurable outbound syslog payload formats: `LEEF`, `CEF`, and `JSON`
+- Added QRadar-friendly `LEEF:2.0` output generation for both CEF input and live JSON log input
+- Added JSON-to-CEF conversion so current Imperva JSON events can still be sent to CEF-based consumers
+- Added config-driven payload selection with `IMPERVA_SYSLOG_FORMAT`
+- Improved large-event handling by using TCP `sendall()` for full writes
+- Added explicit warning when oversized UDP syslog payloads may be truncated or dropped
+- Preserved source event fidelity with full-field flattening and optional raw payload carriage in LEEF/CEF output
+- Documented the new format options and transport guidance in the configuration section
+
 - [CHANGELOG](https://github.com/imperva/incapsula-logs-downloader/blob/master/CHANGELOG.md)  
 - [DEPENDENCIES](#dependencies)
 - [GETTING STARTED](#getting-started)  
@@ -107,8 +125,11 @@ The connector script will look for the following environment variables, and fall
   * "514" No default
 * IMPERVA_SYSLOG_PROTO (optional) - Use TCP protocol with syslog server, Example: 
   * "TCP" Default: "UDP"
+* IMPERVA_SYSLOG_FORMAT (optional) - Syslog payload format to emit. Supported values are "LEEF", "CEF", and "JSON".
+  * Default: "LEEF"
 * IMPERVA_SYSLOG_SECURE (optional) - Use TCP/TLS protocol with syslog server with "YES". 
   * Default: "NO"
+* Large event note - If you need to avoid truncation for large events, prefer `IMPERVA_SYSLOG_PROTO=TCP` or TCP/TLS. UDP delivery may truncate or drop oversized syslog datagrams due to transport limits.
 * IMPERVA_SPLUNK_HEC (optional) - Send to Splunk via HAC with "YES". 
   * Default: "NO"
 * IMPERVA_SPLUNK_HEC_IP (optional) - Use splunk server address, IP address or FQDN, Example:

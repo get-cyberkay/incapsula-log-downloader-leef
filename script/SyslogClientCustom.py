@@ -1,7 +1,10 @@
 import datetime
 import socket
 import ssl
+from collections import OrderedDict
+
 from SyslogClient import SyslogClient
+
 
 FACILITY = {
     'kern': 0, 'user': 1, 'mail': 2, 'daemon': 3,
@@ -17,52 +20,191 @@ LEVEL = {
 }
 
 """
-
-Syslog - For sending TCP Syslog messages via socket class
-
+Syslog - For sending TCP/UDP Syslog messages with QRadar-friendly LEEF payloads.
 """
 
 
-# Create a raw socket client to send messages to syslog server
 class SyslogClientCustom(SyslogClient):
-    def __init__(self, host, port, socket_type, logger, log_hostname="imperva.com", secure=False):
-        SyslogClient.__init__(self, host, port, socket_type, logger, secure)
-        self.log_hostname = log_hostname
-        self.logger.debug("CUSTOM Syslog enabled. Log Hostname: {}".format(log_hostname))
+    LEEF_VERSION = "2.0"
+    DEFAULT_VENDOR = "Imperva"
+    DEFAULT_PRODUCT = "Incapsula"
 
-    def message_customize(self,msg):
-        if msg != '':            
-            msg = msg.replace("Customer=", "flexString1=") # no Customer field in CEF, better to fs1
-            msg = msg.replace("cn1=", "flexString2=")
-            msg = msg.replace("deviceExternalId=", "cn1=")
-            msg = msg.replace("xff=", "cs99=") # yep, there is no cs>6, but it had to go somewhere, and get labes, suggestions welcome
-            msg = msg.replace("cs4=", "cs98=") # moving VID 
-            msg = msg.replace("cs3=", "cs4=") # CO Support to cs4, to match on-prem imperva logs
-            msg = msg.replace("sourceServiceName=", "cs3=") # to match on-prem imperva logs
-            msg = msg.replace("cs3Label=CO Support", "cs3Label=ServiceName") # cause of moving things around... names needed changes
-            msg = msg.replace("cs4Label=VID", "cs4Label=Cookie Support")
-            msg = msg.replace("cs1Label=Cap Support", "cs1Label=Captcha Support") # to make it more clear (cap!= capping)
-            msg = msg.replace("siteTag=", "cs97=") ## site tag is not always populated
-            msg = msg.replace("siteid=", "flexNumber1=") # siteid --> fN1 to make it CEF compliant
-            msg = msg.replace("spt=", "dpt=") # spt!=Server Port --> destPort=dpt
-            msg = msg.replace("cpt=", "spt=") # cpt (client port) --> sourcePort=spt
-            msg = msg.replace("sip=", "dst=") # sip (server ip) --> dst (address)
-            msg = msg.replace("ref=", "requestContext=") # ref -->  requestContext / to make it CEF compliant
-            msg = msg.replace("cs6=", "deviceProcessName=")  #to make it CEF compliant
-            msg = msg.replace("cs5=", "fname=") # to make it CEF compliant
-            msg = msg.replace("qstr=", "cs5=") # to make it CEF compliant
-            msg = msg.replace("ver=", "cs6=")  # to make it CEF compliant           
-            msg += " flexString1Label=Customer"
-            msg += " flexString2Label=ResponseCode"
-            msg += " cs5Label=requestQuery(qstr) "
-            msg += " cs6Label=TLS(ver) "
-            msg += " cn1Label=EventId "
-            msg += " cs97Label=siteTag "
-            msg += " cs98Label=VID "
-            msg += " cs99Label=Xff "                                
+    def __init__(self, host, port, socket_type, logger, log_hostname="imperva.com", secure=False, payload_format="CEF"):
+        SyslogClient.__init__(self, host, port, socket_type, logger, secure, payload_format)
+        self.log_hostname = log_hostname
+        self.logger.debug("LEEF syslog enabled. Log Hostname: {}".format(log_hostname))
+
+    def _split_escaped(self, text, delimiter, maxsplit=-1):
+        parts = []
+        current = []
+        escaped = False
+        splits = 0
+
+        for char in text:
+            if escaped:
+                current.append("\\")
+                current.append(char)
+                escaped = False
+                continue
+
+            if char == "\\":
+                escaped = True
+                continue
+
+            if char == delimiter and (maxsplit < 0 or splits < maxsplit):
+                parts.append("".join(current))
+                current = []
+                splits += 1
+                continue
+
+            current.append(char)
+
+        if escaped:
+            current.append("\\")
+
+        parts.append("".join(current))
+        return parts
+
+    def _unescape_cef_value(self, value):
+        unescaped = []
+        escaped = False
+        translations = {
+            "n": "\n",
+            "r": "\r",
+            "t": "\t",
+        }
+
+        for char in value:
+            if escaped:
+                unescaped.append(translations.get(char, char))
+                escaped = False
+                continue
+
+            if char == "\\":
+                escaped = True
+                continue
+
+            unescaped.append(char)
+
+        if escaped:
+            unescaped.append("\\")
+
+        return "".join(unescaped)
+
+    def _escape_leef_value(self, value):
+        return (
+            value.replace("\\", "\\\\")
+            .replace("\t", "\\t")
+            .replace("\r", "\\r")
+            .replace("\n", "\\n")
+        )
+
+    def _parse_cef_extension(self, extension):
+        parsed = OrderedDict()
+        for token in self._split_escaped(extension.strip(), " "):
+            if not token:
+                continue
+            key_value = self._split_escaped(token, "=", 1)
+            if len(key_value) != 2:
+                parsed[token] = ""
+                continue
+            key = self._unescape_cef_value(key_value[0].strip())
+            value = self._unescape_cef_value(key_value[1].strip())
+            if key:
+                parsed[key] = value
+        return parsed
+
+    def _parse_cef_message(self, message):
+        if not message.startswith("CEF:"):
+            return None
+
+        header_parts = self._split_escaped(message[4:], "|", 7)
+        if len(header_parts) < 8:
+            return None
+
+        cef_version = self._unescape_cef_value(header_parts[0].strip())
+        vendor = self._unescape_cef_value(header_parts[1].strip()) or self.DEFAULT_VENDOR
+        product = self._unescape_cef_value(header_parts[2].strip()) or self.DEFAULT_PRODUCT
+        device_version = self._unescape_cef_value(header_parts[3].strip())
+        signature_id = self._unescape_cef_value(header_parts[4].strip())
+        name = self._unescape_cef_value(header_parts[5].strip())
+        severity = self._unescape_cef_value(header_parts[6].strip())
+        extension = header_parts[7]
+        extension_fields = self._parse_cef_extension(extension)
+
+        return {
+            "cef_version": cef_version,
+            "vendor": vendor,
+            "product": product,
+            "device_version": device_version,
+            "signature_id": signature_id,
+            "name": name,
+            "severity": severity,
+            "extension_fields": extension_fields,
+        }
+
+    def _coerce_leef_event_id(self, cef):
+        extension_fields = cef["extension_fields"]
+        if extension_fields.get("deviceExternalId"):
+            return extension_fields["deviceExternalId"]
+        if cef["signature_id"]:
+            return cef["signature_id"]
+        if cef["name"]:
+            return cef["name"]
+        return "0"
+
+    def _build_leef_message(self, message):
+        cef = self._parse_cef_message(message)
+        if cef is None:
+            return message
+
+        leef_fields = OrderedDict()
+        leef_fields["eventName"] = cef["name"]
+        leef_fields["severity"] = cef["severity"]
+        for key, value in cef["extension_fields"].items():
+            leef_fields[key] = value
+
+        # Preserve the original event timestamp in a QRadar-friendly field when we have it.
+        if "devTime" not in leef_fields:
+            timestamp_field = leef_fields.get("end") or leef_fields.get("start")
+            if timestamp_field:
+                try:
+                    epoch_seconds = int(timestamp_field) / 1000
+                    leef_fields["devTime"] = datetime.datetime.fromtimestamp(
+                        epoch_seconds, datetime.timezone.utc
+                    ).isoformat().replace("+00:00", "Z")
+                except (TypeError, ValueError, OSError):
+                    pass
+
+        header = [
+            "LEEF:{}".format(self.LEEF_VERSION),
+            cef["vendor"],
+            cef["product"],
+            cef["device_version"] or cef["cef_version"] or "1.0",
+            self._coerce_leef_event_id(cef),
+        ]
+
+        extensions = []
+        for key, value in leef_fields.items():
+            if value == "":
+                extensions.append(key)
+            else:
+                extensions.append("{}={}".format(key, self._escape_leef_value(value)))
+
+        payload = "|".join(header) + "|"
+        if extensions:
+            payload += "\t".join(extensions)
+        return payload
+
+    def message_customize(self, msg):
+        if msg == "":
+            return msg
+        if msg.startswith("LEEF:"):
+            return msg
+        if self.payload_format == "LEEF":
+            return self.prepare_message(msg)
         return msg
 
-    # Send the messages
     def send(self, data):
         """
         Send syslog packet to given host and port.
@@ -70,19 +212,19 @@ class SyslogClientCustom(SyslogClient):
         messages = ""
         sock = socket.socket(socket.AF_INET, self.socket_type)
         priority = "<{}>".format(LEVEL['info'] + FACILITY['daemon'] * 8)
+
         if self.socket_type == socket.SOCK_STREAM:
-            # Loop over the data/messages array and create the relevant object(s) to be sent.
             for message in data:
-                if "|Normal|" in message: # only send alerts to syslog, otherwise skip
+                if "|Normal|" in message:
                     continue
-                # to have a constant source hostname, or not
+                message = self.prepare_message(message)
                 if self.log_hostname == "imperva.com":
                     hostname = self.get_hostname(message)
                 else:
                     hostname = self.log_hostname
                 timestamp = self.get_time(message)
-                application = "cwaf"                
-                customized_message=self.message_customize(message)                                   
+                application = "cwaf"
+                customized_message = self.message_customize(message)
                 msg = "{} {} {} {} {}\n".format(priority, timestamp, hostname, application, customized_message)
                 messages += msg
             if self.secure:
@@ -90,7 +232,6 @@ class SyslogClientCustom(SyslogClient):
                 try:
                     sock.connect((self.host, int(self.port)))
                     sock.send(bytes(messages, 'utf-8'))
-                    # Returning true if everything is good, if not log the error and return None.
                     return True
                 except ssl.SSLError as e:
                     self.logger.error(e)
@@ -101,7 +242,6 @@ class SyslogClientCustom(SyslogClient):
                 try:
                     sock.connect((self.host, int(self.port)))
                     sock.send(bytes(messages, 'utf-8'))
-                    # Returning true if everything is good, if not log the error and return None.
                     return True
                 except socket.error as e:
                     self.logger.error(e)
@@ -110,28 +250,23 @@ class SyslogClientCustom(SyslogClient):
                     sock.close()
         elif self.socket_type == socket.SOCK_DGRAM:
             for message in data:
-                if "|Normal|" in message: # only send alerts to syslog, otherwise skip
+                if "|Normal|" in message:
                     continue
-                # to have a constant source hostname, or not
+                message = self.prepare_message(message)
                 if self.log_hostname == "imperva.com":
                     hostname = self.get_hostname(message)
                 else:
                     hostname = self.log_hostname
                 timestamp = self.get_time(message)
                 application = "cwaf"
-                customized_message=self.message_customize(message)                                  
+                customized_message = self.message_customize(message)
                 msg = "{} {} {} {} {}\n".format(priority, timestamp, hostname, application, customized_message)
                 try:
                     sock.sendto(bytes(msg, 'utf-8'), (self.host, int(self.port)))
                 except socket.error as e:
                     self.logger.error(e)
-                #    return None
-                # finally:
-                #     sock.close()
-                #     # Returning true if everything is good, if not log the error and return None.
             return True
-    
-    # Function used to get the inbound timestamp to set the indexed time in epoch
+
     def get_time(self, message):
         timestamp = datetime.datetime.now().strftime("%b %d %H:%M:%S")
         try:
@@ -143,11 +278,12 @@ class SyslogClientCustom(SyslogClient):
                 epoch = int(str(message.split("end=")[1]).split("\t")[0]) / 1000
                 timestamp = datetime.datetime.fromtimestamp(int(epoch)).strftime("%b %d %H:%M:%S") or \
                             datetime.datetime.now().strftime("%b %d %H:%M:%S")
-        except IndexError:
+            elif message.startswith("{"):
+                return SyslogClient.get_time(self, message)
+        except (IndexError, ValueError, TypeError, OSError):
             self.logger.error("Error converting epoch time.")
         return timestamp
-    
-    # Function used to get the host name from the inbound hostname/service name
+
     def get_hostname(self, message):
         hostname = "imperva.com"
         try:
@@ -155,7 +291,8 @@ class SyslogClientCustom(SyslogClient):
                 hostname = str(message.split("sourceServiceName=")[1]).split(" ")[0] or "imperva.com"
             elif message.startswith("LEEF"):
                 hostname = str(message.split("sourceServiceName=")[1]).split("\t")[0] or "imperva.com"
+            elif message.startswith("{"):
+                return SyslogClient.get_hostname(self, message)
         except IndexError:
             self.logger.error("Error getting hostname.")
         return hostname
-
