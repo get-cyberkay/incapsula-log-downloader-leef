@@ -1,6 +1,8 @@
-# Imperva Connector
+# Incapsula Log Downloader LEEF
 
-> A Python script for downloading log files from Imperva CloudWAF
+> A public fork of Imperva's log downloader with configurable `LEEF`, `CEF`, and `JSON` syslog output.
+
+This fork is intended for teams that want to keep Imperva log collection behavior while adding SIEM-friendly output control for QRadar, CEF consumers, and JSON pipelines.
 
 ## Acknowledgment
 
@@ -19,6 +21,15 @@ Original project:
 - Added explicit warning when oversized UDP syslog payloads may be truncated or dropped
 - Preserved source event fidelity with full-field flattening and optional raw payload carriage in LEEF/CEF output
 - Documented the new format options and transport guidance in the configuration section
+
+## Fork Release Notes
+
+Current fork release highlights:
+- Introduced `LEEF` output for QRadar-style syslog ingestion
+- Added outbound format switching with `IMPERVA_SYSLOG_FORMAT`
+- Added JSON-to-CEF conversion for tenants now returning JSON logs
+- Hardened TCP syslog writes for larger events with `sendall()`
+- Added guidance and warnings around UDP truncation risk for oversized syslog messages
 
 - [CHANGELOG](https://github.com/imperva/incapsula-logs-downloader/blob/master/CHANGELOG.md)  
 - [DEPENDENCIES](#dependencies)

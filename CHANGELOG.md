@@ -1,5 +1,14 @@
 # CHANGELOG.md
 
+## Fork Release 1.0.0
+Features:
+- added configurable outbound syslog formats: LEEF, CEF, and JSON
+- added QRadar-friendly LEEF output generation
+- added JSON-to-CEF conversion for JSON log sources
+- improved TCP syslog delivery with sendall() for larger events
+- added UDP oversize warnings to reduce silent truncation risk
+- documented public fork improvements and original-project acknowledgment
+
 ## 2.4.1
 Features:
 - added support for JSON content files
