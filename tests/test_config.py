@@ -59,6 +59,41 @@ class ConfigTests(unittest.TestCase):
 
         self.assertIs(config.ARCHIVE_DIR, False)
 
+    def test_env_var_overrides_when_optional_key_absent_from_file(self):
+        # An env-only deployment must not crash when an optional key is missing
+        # from Settings.Config; the environment variable should win.
+        minimal_config = (
+            "[SETTINGS]\n"
+            "IMPERVA_API_ID=123\n"
+            "IMPERVA_API_KEY=abc\n"
+            "IMPERVA_API_URL=https://logs1.incapsula.com/1_2/\n"
+            "IMPERVA_INCOMING_DIR=runtime/incoming\n"
+            "IMPERVA_PROCESS_DIR=runtime/process\n"
+        )
+        with tempfile.TemporaryDirectory() as config_dir:
+            with open(os.path.join(config_dir, "Settings.Config"), "w", encoding="utf-8") as fp:
+                fp.write(minimal_config)
+
+            logger = logging.getLogger("test_env_override_absent_key")
+            logger.handlers[:] = []
+            logger.addHandler(logging.NullHandler())
+
+            env = {
+                "IMPERVA_SYSLOG_ENABLE": "YES",
+                "IMPERVA_SYSLOG_ADDRESS": "10.0.0.9",
+                "IMPERVA_SYSLOG_PORT": "6514",
+                "IMPERVA_SYSLOG_PROTO": "TCP",
+                "IMPERVA_SYSLOG_FORMAT": "leef",
+            }
+            with patch.dict(os.environ, env, clear=True):
+                config = Config(config_dir, logger).read()
+
+        self.assertEqual(config.SYSLOG_ADDRESS, "10.0.0.9")
+        self.assertEqual(config.SYSLOG_PORT, "6514")
+        self.assertEqual(config.SYSLOG_FORMAT, "LEEF")
+        # Optional keys absent from both env and file fall back to defaults.
+        self.assertEqual(config.SPLUNK_HEC, "NO")
+
 
 if __name__ == "__main__":
     unittest.main()

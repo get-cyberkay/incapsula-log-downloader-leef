@@ -29,13 +29,14 @@ Syslog - For sending TCP Syslog messages via socket class
 class SyslogClient:
     MAX_UDP_PAYLOAD_BYTES = 65000
 
-    def __init__(self, host, port, socket_type, logger, secure=False, payload_format="CEF", tcp_framing="octet"):
+    def __init__(self, host, port, socket_type, logger, secure=False, payload_format="CEF", tcp_framing="octet", ca_file=None):
         self.host = host
         self.port = port
         self.socket_type = socket.SOCK_STREAM if socket_type == "TCP" else socket.SOCK_DGRAM
         self.logger = logger
         self.logger.debug("Send to Host={} on Port={}".format(self.host, self.port))
         self.secure = secure
+        self.ca_file = ca_file or None
         self.payload_format = (payload_format or "CEF").upper()
         self.tcp_framing = (tcp_framing or "octet").lower()
         if self.tcp_framing not in ("octet", "newline"):
@@ -46,6 +47,17 @@ class SyslogClient:
             self.tcp_framing = "octet"
         self.leef_formatter = LeefFormatter(self.logger)
         self.cef_formatter = CefFormatter(self.logger)
+
+    def wrap_secure_socket(self, sock):
+        """Wrap a TCP socket in a TLS context that verifies the server certificate.
+
+        Uses the system trust store by default; a custom CA bundle is honoured when
+        configured. server_hostname is set so SNI and hostname verification work.
+        """
+        context = ssl.create_default_context()
+        if self.ca_file:
+            context.load_verify_locations(self.ca_file)
+        return context.wrap_socket(sock, server_hostname=self.host)
 
     def frame_tcp_message(self, message):
         message = (message or "").rstrip("\r\n")
@@ -85,13 +97,13 @@ class SyslogClient:
                 msg = self.build_wire_message(message, priority)
                 messages.append(msg)
             if self.secure:
-                sock = ssl.wrap_socket(sock)
+                sock = self.wrap_secure_socket(sock)
                 try:
                     sock.connect((self.host, int(self.port)))
                     self.send_tcp_messages(sock, messages)
                     # Returning true if everything is good, if not log the error and return None.
                     return True
-                except ssl.SSLError as e:
+                except (ssl.SSLError, socket.error) as e:
                     self.logger.error(e)
                     return None
                 finally:
@@ -108,24 +120,28 @@ class SyslogClient:
                 finally:
                     sock.close()
         elif self.socket_type == socket.SOCK_DGRAM:
-            for message in data:
-                message = self.prepare_message(message)
-                msg = "{}\n".format(self.build_wire_message(message, priority))
-                try:
-                    payload = msg.encode('utf-8')
-                    if len(payload) > self.MAX_UDP_PAYLOAD_BYTES:
-                        self.logger.warning(
-                            "UDP syslog payload is %s bytes and may be truncated or dropped. Use TCP/TLS to avoid truncation.",
-                            len(payload)
-                        )
-                    sock.sendto(payload, (self.host, int(self.port)))
-                except socket.error as e:
-                    self.logger.error(e)
-                #    return None
-                # finally:
-                #     sock.close()
-                #     # Returning true if everything is good, if not log the error and return None.
-            return True
+            success = True
+            try:
+                for message in data:
+                    message = self.prepare_message(message)
+                    msg = "{}\n".format(self.build_wire_message(message, priority))
+                    try:
+                        payload = msg.encode('utf-8')
+                        if len(payload) > self.MAX_UDP_PAYLOAD_BYTES:
+                            self.logger.warning(
+                                "UDP syslog payload is %s bytes and may be truncated or dropped. Use TCP/TLS to avoid truncation.",
+                                len(payload)
+                            )
+                        sock.sendto(payload, (self.host, int(self.port)))
+                    except socket.error as e:
+                        # A hard socket error (unreachable host, bad port) is reportable;
+                        # flag the batch as failed so the caller retries instead of
+                        # silently dropping the logs.
+                        self.logger.error(e)
+                        success = False
+            finally:
+                sock.close()
+            return True if success else None
 
     def prepare_message(self, message):
         message = (message or "").rstrip("\r\n")

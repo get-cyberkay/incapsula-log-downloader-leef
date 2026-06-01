@@ -104,13 +104,13 @@ class LeefFormatter:
                 continue
             safe_key = self._sanitize_key(key)
             encoded_fields.append("{}={}".format(safe_key, self._escape_value(fields[key])))
-        return "LEEF:2.0|{}|{}|{}|{}|{}\n".format(
+        return "LEEF:2.0|{}|{}|{}|{}|{}".format(
             self._escape_header(vendor),
             self._escape_header(product),
             self._escape_header(version),
             self._escape_header(event_id),
             self.HEADER_DELIMITER.join(encoded_fields)
-        ).rstrip("\n")
+        )
 
     def _flatten(self, value, result, prefix=""):
         if isinstance(value, dict):

@@ -54,7 +54,7 @@ class LogsFileIndex:
 
     @staticmethod
     def validate_logs_index_file_format(content):
-        file_rex = re.compile("(\d+_\d+\.log\n)+")
+        file_rex = re.compile(r"(\d+_\d+\.log\n)+")
         if file_rex.match(content):
             return True
         return False
@@ -65,7 +65,7 @@ class LogsFileIndex:
 
     @staticmethod
     def validate_log_file_format(content):
-        file_rex = re.compile("(\d+_\d+\.log)")
+        file_rex = re.compile(r"(\d+_\d+\.log)")
         if file_rex.match(content):
             return True
         return False

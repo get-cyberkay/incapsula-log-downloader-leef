@@ -1,7 +1,6 @@
 import datetime
 import socket
 import ssl
-from collections import OrderedDict
 
 from SyslogClient import SyslogClient
 
@@ -25,185 +24,15 @@ Syslog - For sending TCP/UDP Syslog messages with QRadar-friendly LEEF payloads.
 
 
 class SyslogClientCustom(SyslogClient):
-    LEEF_VERSION = "2.0"
-    DEFAULT_VENDOR = "Imperva"
-    DEFAULT_PRODUCT = "Incapsula"
-
-    def __init__(self, host, port, socket_type, logger, log_hostname="imperva.com", secure=False, payload_format="CEF", tcp_framing="octet"):
-        SyslogClient.__init__(self, host, port, socket_type, logger, secure, payload_format, tcp_framing)
+    def __init__(self, host, port, socket_type, logger, log_hostname="imperva.com", secure=False, payload_format="CEF", tcp_framing="octet", ca_file=None):
+        SyslogClient.__init__(self, host, port, socket_type, logger, secure, payload_format, tcp_framing, ca_file)
         self.log_hostname = log_hostname
         self.logger.debug("LEEF syslog enabled. Log Hostname: {}".format(log_hostname))
 
-    def _split_escaped(self, text, delimiter, maxsplit=-1):
-        parts = []
-        current = []
-        escaped = False
-        splits = 0
-
-        for char in text:
-            if escaped:
-                current.append("\\")
-                current.append(char)
-                escaped = False
-                continue
-
-            if char == "\\":
-                escaped = True
-                continue
-
-            if char == delimiter and (maxsplit < 0 or splits < maxsplit):
-                parts.append("".join(current))
-                current = []
-                splits += 1
-                continue
-
-            current.append(char)
-
-        if escaped:
-            current.append("\\")
-
-        parts.append("".join(current))
-        return parts
-
-    def _unescape_cef_value(self, value):
-        unescaped = []
-        escaped = False
-        translations = {
-            "n": "\n",
-            "r": "\r",
-            "t": "\t",
-        }
-
-        for char in value:
-            if escaped:
-                unescaped.append(translations.get(char, char))
-                escaped = False
-                continue
-
-            if char == "\\":
-                escaped = True
-                continue
-
-            unescaped.append(char)
-
-        if escaped:
-            unescaped.append("\\")
-
-        return "".join(unescaped)
-
-    def _escape_leef_value(self, value):
-        return (
-            value.replace("\\", "\\\\")
-            .replace("\t", "\\t")
-            .replace("\r", "\\r")
-            .replace("\n", "\\n")
-        )
-
-    def _parse_cef_extension(self, extension):
-        parsed = OrderedDict()
-        for token in self._split_escaped(extension.strip(), " "):
-            if not token:
-                continue
-            key_value = self._split_escaped(token, "=", 1)
-            if len(key_value) != 2:
-                parsed[token] = ""
-                continue
-            key = self._unescape_cef_value(key_value[0].strip())
-            value = self._unescape_cef_value(key_value[1].strip())
-            if key:
-                parsed[key] = value
-        return parsed
-
-    def _parse_cef_message(self, message):
-        if not message.startswith("CEF:"):
-            return None
-
-        header_parts = self._split_escaped(message[4:], "|", 7)
-        if len(header_parts) < 8:
-            return None
-
-        cef_version = self._unescape_cef_value(header_parts[0].strip())
-        vendor = self._unescape_cef_value(header_parts[1].strip()) or self.DEFAULT_VENDOR
-        product = self._unescape_cef_value(header_parts[2].strip()) or self.DEFAULT_PRODUCT
-        device_version = self._unescape_cef_value(header_parts[3].strip())
-        signature_id = self._unescape_cef_value(header_parts[4].strip())
-        name = self._unescape_cef_value(header_parts[5].strip())
-        severity = self._unescape_cef_value(header_parts[6].strip())
-        extension = header_parts[7]
-        extension_fields = self._parse_cef_extension(extension)
-
-        return {
-            "cef_version": cef_version,
-            "vendor": vendor,
-            "product": product,
-            "device_version": device_version,
-            "signature_id": signature_id,
-            "name": name,
-            "severity": severity,
-            "extension_fields": extension_fields,
-        }
-
-    def _coerce_leef_event_id(self, cef):
-        extension_fields = cef["extension_fields"]
-        if extension_fields.get("deviceExternalId"):
-            return extension_fields["deviceExternalId"]
-        if cef["signature_id"]:
-            return cef["signature_id"]
-        if cef["name"]:
-            return cef["name"]
-        return "0"
-
-    def _build_leef_message(self, message):
-        cef = self._parse_cef_message(message)
-        if cef is None:
-            return message
-
-        leef_fields = OrderedDict()
-        leef_fields["eventName"] = cef["name"]
-        leef_fields["severity"] = cef["severity"]
-        for key, value in cef["extension_fields"].items():
-            leef_fields[key] = value
-
-        # Preserve the original event timestamp in a QRadar-friendly field when we have it.
-        if "devTime" not in leef_fields:
-            timestamp_field = leef_fields.get("end") or leef_fields.get("start")
-            if timestamp_field:
-                try:
-                    epoch_seconds = int(timestamp_field) / 1000
-                    leef_fields["devTime"] = datetime.datetime.fromtimestamp(
-                        epoch_seconds, datetime.timezone.utc
-                    ).isoformat().replace("+00:00", "Z")
-                except (TypeError, ValueError, OSError):
-                    pass
-
-        header = [
-            "LEEF:{}".format(self.LEEF_VERSION),
-            cef["vendor"],
-            cef["product"],
-            cef["device_version"] or cef["cef_version"] or "1.0",
-            self._coerce_leef_event_id(cef),
-        ]
-
-        extensions = []
-        for key, value in leef_fields.items():
-            if value == "":
-                extensions.append(key)
-            else:
-                extensions.append("{}={}".format(key, self._escape_leef_value(value)))
-
-        payload = "|".join(header) + "|"
-        if extensions:
-            payload += "\t".join(extensions)
-        return payload
-
-    def message_customize(self, msg):
-        if msg == "":
-            return msg
-        if msg.startswith("LEEF:"):
-            return msg
-        if self.payload_format == "LEEF":
-            return self.prepare_message(msg)
-        return msg
+    def resolve_hostname(self, message):
+        if self.log_hostname == "imperva.com":
+            return self.get_hostname(message)
+        return self.log_hostname
 
     def send(self, data):
         """
@@ -218,20 +47,16 @@ class SyslogClientCustom(SyslogClient):
                 if "|Normal|" in message:
                     continue
                 message = self.prepare_message(message)
-                if self.log_hostname == "imperva.com":
-                    hostname = self.get_hostname(message)
-                else:
-                    hostname = self.log_hostname
-                customized_message = self.message_customize(message)
-                msg = self.build_wire_message(customized_message, priority, hostname)
+                hostname = self.resolve_hostname(message)
+                msg = self.build_wire_message(message, priority, hostname)
                 messages.append(msg)
             if self.secure:
-                sock = ssl.wrap_socket(sock)
+                sock = self.wrap_secure_socket(sock)
                 try:
                     sock.connect((self.host, int(self.port)))
                     self.send_tcp_messages(sock, messages)
                     return True
-                except ssl.SSLError as e:
+                except (ssl.SSLError, socket.error) as e:
                     self.logger.error(e)
                     return None
                 finally:
@@ -247,21 +72,22 @@ class SyslogClientCustom(SyslogClient):
                 finally:
                     sock.close()
         elif self.socket_type == socket.SOCK_DGRAM:
-            for message in data:
-                if "|Normal|" in message:
-                    continue
-                message = self.prepare_message(message)
-                if self.log_hostname == "imperva.com":
-                    hostname = self.get_hostname(message)
-                else:
-                    hostname = self.log_hostname
-                customized_message = self.message_customize(message)
-                msg = "{}\n".format(self.build_wire_message(customized_message, priority, hostname))
-                try:
-                    sock.sendto(bytes(msg, 'utf-8'), (self.host, int(self.port)))
-                except socket.error as e:
-                    self.logger.error(e)
-            return True
+            success = True
+            try:
+                for message in data:
+                    if "|Normal|" in message:
+                        continue
+                    message = self.prepare_message(message)
+                    hostname = self.resolve_hostname(message)
+                    msg = "{}\n".format(self.build_wire_message(message, priority, hostname))
+                    try:
+                        sock.sendto(bytes(msg, 'utf-8'), (self.host, int(self.port)))
+                    except socket.error as e:
+                        self.logger.error(e)
+                        success = False
+            finally:
+                sock.close()
+            return True if success else None
 
     def get_time(self, message):
         timestamp = datetime.datetime.now().strftime("%b %d %H:%M:%S")
