@@ -29,7 +29,7 @@ Syslog - For sending TCP Syslog messages via socket class
 class SyslogClient:
     MAX_UDP_PAYLOAD_BYTES = 65000
 
-    def __init__(self, host, port, socket_type, logger, secure=False, payload_format="CEF"):
+    def __init__(self, host, port, socket_type, logger, secure=False, payload_format="CEF", tcp_framing="octet"):
         self.host = host
         self.port = port
         self.socket_type = socket.SOCK_STREAM if socket_type == "TCP" else socket.SOCK_DGRAM
@@ -37,8 +37,37 @@ class SyslogClient:
         self.logger.debug("Send to Host={} on Port={}".format(self.host, self.port))
         self.secure = secure
         self.payload_format = (payload_format or "CEF").upper()
+        self.tcp_framing = (tcp_framing or "octet").lower()
+        if self.tcp_framing not in ("octet", "newline"):
+            self.logger.warning(
+                "Unsupported SYSLOG_TCP_FRAMING value '%s'. Falling back to RFC6587 octet framing.",
+                self.tcp_framing
+            )
+            self.tcp_framing = "octet"
         self.leef_formatter = LeefFormatter(self.logger)
         self.cef_formatter = CefFormatter(self.logger)
+
+    def frame_tcp_message(self, message):
+        message = (message or "").rstrip("\r\n")
+        if self.tcp_framing == "newline":
+            return "{}\n".format(message).encode('utf-8')
+        payload = message.encode('utf-8')
+        return "{} ".format(len(payload)).encode('ascii') + payload
+
+    def send_tcp_messages(self, sock, messages):
+        for message in messages:
+            sock.sendall(self.frame_tcp_message(message))
+
+    def should_send_payload_only(self, message):
+        return self.payload_format == "LEEF" and message.startswith("LEEF:")
+
+    def build_wire_message(self, message, priority, hostname=None):
+        if self.should_send_payload_only(message):
+            return message
+        timestamp = self.get_time(message)
+        hostname = hostname or self.get_hostname(message)
+        application = "cwaf"
+        return "{} {} {} {} {}".format(priority, timestamp, hostname, application, message)
 
     # Send the messages
     def send(self, data):
@@ -53,16 +82,13 @@ class SyslogClient:
             # Loop over the data/messages array and create the relevant object(s) to be sent.
             for message in data:
                 message = self.prepare_message(message)
-                timestamp = self.get_time(message)
-                hostname = self.get_hostname(message)
-                application = "cwaf"
-                msg = "{} {} {} {} {}\n".format(priority, timestamp, hostname, application, message)
+                msg = self.build_wire_message(message, priority)
                 messages.append(msg)
             if self.secure:
                 sock = ssl.wrap_socket(sock)
                 try:
                     sock.connect((self.host, int(self.port)))
-                    sock.sendall("".join(messages).encode('utf-8'))
+                    self.send_tcp_messages(sock, messages)
                     # Returning true if everything is good, if not log the error and return None.
                     return True
                 except ssl.SSLError as e:
@@ -73,7 +99,7 @@ class SyslogClient:
             else:
                 try:
                     sock.connect((self.host, int(self.port)))
-                    sock.sendall("".join(messages).encode('utf-8'))
+                    self.send_tcp_messages(sock, messages)
                     # Returning true if everything is good, if not log the error and return None.
                     return True
                 except socket.error as e:
@@ -84,10 +110,7 @@ class SyslogClient:
         elif self.socket_type == socket.SOCK_DGRAM:
             for message in data:
                 message = self.prepare_message(message)
-                timestamp = self.get_time(message)
-                hostname = self.get_hostname(message)
-                application = "cwaf"
-                msg = "{} {} {} {} {}\n".format(priority, timestamp, hostname, application, message)
+                msg = "{}\n".format(self.build_wire_message(message, priority))
                 try:
                     payload = msg.encode('utf-8')
                     if len(payload) > self.MAX_UDP_PAYLOAD_BYTES:

@@ -21,20 +21,23 @@ class HandlingLogs:
         logger.info("SYSLOG_PROTO: {}".format(self.config.SYSLOG_PROTO))
         logger.info("SYSLOG_CUSTOM: {}".format(self.config.SYSLOG_CUSTOM))
         logger.info("SYSLOG_FORMAT: {}".format(self.config.SYSLOG_FORMAT))
+        logger.info("SYSLOG_TCP_FRAMING: {}".format(self.config.SYSLOG_TCP_FRAMING))
 
         # Confire the selected sender, either SysLog (TCP or UDP) or Splunk HEC.
         if self.config.SYSLOG_PROTO == 'TCP' and self.config.SYSLOG_ENABLE == 'YES' and self.config.SYSLOG_CUSTOM == 'NO':
             self.logger.info('Syslog enabled, using TCP')
             self.remote_logger = SyslogClient(
                 self.config.SYSLOG_ADDRESS, self.config.SYSLOG_PORT, "TCP", self.logger,
-                payload_format=self.config.SYSLOG_FORMAT
+                payload_format=self.config.SYSLOG_FORMAT,
+                tcp_framing=self.config.SYSLOG_TCP_FRAMING
             )
 
         if (self.config.SYSLOG_PROTO == 'TCP' and self.config.SYSLOG_ENABLE == 'YES'
                 and self.config.SYSLOG_CUSTOM == 'NO' and self.config.IMPERVA_SYSLOG_SECURE == "YES"):
             self.logger.info('Syslog enabled, using TCP/TLS')
             self.remote_logger = SyslogClient(self.config.SYSLOG_ADDRESS, self.config.SYSLOG_PORT, "TCP",
-                                              self.logger, True, self.config.SYSLOG_FORMAT)
+                                              self.logger, True, self.config.SYSLOG_FORMAT,
+                                              self.config.SYSLOG_TCP_FRAMING)
 
         if self.config.SYSLOG_PROTO == 'UDP' and self.config.SYSLOG_ENABLE == 'YES' and self.config.SYSLOG_CUSTOM == 'NO':
             self.logger.info('Syslog enabled, using UDP')
@@ -54,14 +57,16 @@ class HandlingLogs:
             self.logger.info('Custom LEEF Syslog enabled, using TCP')
             self.remote_logger = SyslogClientCustom(
                 self.config.SYSLOG_ADDRESS, self.config.SYSLOG_PORT, "TCP", self.logger,
-                self.config.SYSLOG_SENDER_HOSTNAME, payload_format=self.config.SYSLOG_FORMAT
+                self.config.SYSLOG_SENDER_HOSTNAME, payload_format=self.config.SYSLOG_FORMAT,
+                tcp_framing=self.config.SYSLOG_TCP_FRAMING
             )
 
         if (self.config.SYSLOG_PROTO == 'TCP' and self.config.SYSLOG_ENABLE == 'YES'
                 and self.config.SYSLOG_CUSTOM == 'YES' and self.config.IMPERVA_SYSLOG_SECURE == "YES"):
             self.logger.info('Custom LEEF Syslog enabled, using TCP/TLS')
             self.remote_logger = SyslogClientCustom(self.config.SYSLOG_ADDRESS, self.config.SYSLOG_PORT, "TCP",
-                                                    self.logger, self.config.SYSLOG_SENDER_HOSTNAME, True, self.config.SYSLOG_FORMAT)
+                                                    self.logger, self.config.SYSLOG_SENDER_HOSTNAME, True, self.config.SYSLOG_FORMAT,
+                                                    self.config.SYSLOG_TCP_FRAMING)
 
         if self.config.SPLUNK_HEC == "YES":
             self.logger.info('Splunk HEC enabled.')

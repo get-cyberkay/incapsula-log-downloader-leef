@@ -136,8 +136,11 @@ The connector script will look for the following environment variables, and fall
   * "514" No default
 * IMPERVA_SYSLOG_PROTO (optional) - Use TCP protocol with syslog server, Example: 
   * "TCP" Default: "UDP"
+* SYSLOG_TCP_FRAMING (optional) - TCP syslog framing mode. Use "octet" for RFC6587 octet-counted frames or "newline" for receivers that expect one event per line.
+  * Default: "octet"
 * IMPERVA_SYSLOG_FORMAT (optional) - Syslog payload format to emit. Supported values are "LEEF", "CEF", and "JSON".
   * Default: "LEEF"
+  * LEEF output is emitted as the LEEF record itself, beginning with `LEEF:2.0|`, without a prepended syslog priority/timestamp/host/application header.
 * IMPERVA_SYSLOG_SECURE (optional) - Use TCP/TLS protocol with syslog server with "YES". 
   * Default: "NO"
 * Large event note - If you need to avoid truncation for large events, prefer `IMPERVA_SYSLOG_PROTO=TCP` or TCP/TLS. UDP delivery may truncate or drop oversized syslog datagrams due to transport limits.

@@ -29,8 +29,8 @@ class SyslogClientCustom(SyslogClient):
     DEFAULT_VENDOR = "Imperva"
     DEFAULT_PRODUCT = "Incapsula"
 
-    def __init__(self, host, port, socket_type, logger, log_hostname="imperva.com", secure=False, payload_format="CEF"):
-        SyslogClient.__init__(self, host, port, socket_type, logger, secure, payload_format)
+    def __init__(self, host, port, socket_type, logger, log_hostname="imperva.com", secure=False, payload_format="CEF", tcp_framing="octet"):
+        SyslogClient.__init__(self, host, port, socket_type, logger, secure, payload_format, tcp_framing)
         self.log_hostname = log_hostname
         self.logger.debug("LEEF syslog enabled. Log Hostname: {}".format(log_hostname))
 
@@ -209,7 +209,7 @@ class SyslogClientCustom(SyslogClient):
         """
         Send syslog packet to given host and port.
         """
-        messages = ""
+        messages = []
         sock = socket.socket(socket.AF_INET, self.socket_type)
         priority = "<{}>".format(LEVEL['info'] + FACILITY['daemon'] * 8)
 
@@ -222,16 +222,14 @@ class SyslogClientCustom(SyslogClient):
                     hostname = self.get_hostname(message)
                 else:
                     hostname = self.log_hostname
-                timestamp = self.get_time(message)
-                application = "cwaf"
                 customized_message = self.message_customize(message)
-                msg = "{} {} {} {} {}\n".format(priority, timestamp, hostname, application, customized_message)
-                messages += msg
+                msg = self.build_wire_message(customized_message, priority, hostname)
+                messages.append(msg)
             if self.secure:
                 sock = ssl.wrap_socket(sock)
                 try:
                     sock.connect((self.host, int(self.port)))
-                    sock.send(bytes(messages, 'utf-8'))
+                    self.send_tcp_messages(sock, messages)
                     return True
                 except ssl.SSLError as e:
                     self.logger.error(e)
@@ -241,7 +239,7 @@ class SyslogClientCustom(SyslogClient):
             else:
                 try:
                     sock.connect((self.host, int(self.port)))
-                    sock.send(bytes(messages, 'utf-8'))
+                    self.send_tcp_messages(sock, messages)
                     return True
                 except socket.error as e:
                     self.logger.error(e)
@@ -257,10 +255,8 @@ class SyslogClientCustom(SyslogClient):
                     hostname = self.get_hostname(message)
                 else:
                     hostname = self.log_hostname
-                timestamp = self.get_time(message)
-                application = "cwaf"
                 customized_message = self.message_customize(message)
-                msg = "{} {} {} {} {}\n".format(priority, timestamp, hostname, application, customized_message)
+                msg = "{}\n".format(self.build_wire_message(customized_message, priority, hostname))
                 try:
                     sock.sendto(bytes(msg, 'utf-8'), (self.host, int(self.port)))
                 except socket.error as e:

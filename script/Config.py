@@ -53,6 +53,13 @@ class Config:
                 config_parser.get('SETTINGS', 'IMPERVA_SYSLOG_ADDRESS'))
             config.SYSLOG_PORT = os.environ.get('IMPERVA_SYSLOG_PORT', config_parser.get('SETTINGS', 'IMPERVA_SYSLOG_PORT'))
             config.SYSLOG_PROTO = os.environ.get('IMPERVA_SYSLOG_PROTO', config_parser.get('SETTINGS', 'IMPERVA_SYSLOG_PROTO', fallback="UDP"))
+            config.SYSLOG_TCP_FRAMING = os.environ.get(
+                'SYSLOG_TCP_FRAMING',
+                os.environ.get(
+                    'IMPERVA_SYSLOG_TCP_FRAMING',
+                    config_parser.get('SETTINGS', 'SYSLOG_TCP_FRAMING', fallback="octet")
+                )
+            ).lower()
             config.SYSLOG_CUSTOM = os.environ.get('IMPERVA_SYSLOG_CUSTOM', config_parser.get('SETTINGS', 'IMPERVA_SYSLOG_CUSTOM', fallback="NO"))
             config.SYSLOG_FORMAT = os.environ.get('IMPERVA_SYSLOG_FORMAT', config_parser.get('SETTINGS', 'IMPERVA_SYSLOG_FORMAT', fallback="LEEF")).upper()
             config.SYSLOG_SENDER_HOSTNAME = os.environ.get('IMPERVA_SYSLOG_SENDER_HOSTNAME', config_parser.get('SETTINGS', 'IMPERVA_SYSLOG_SENDER_HOSTNAME', fallback="imperva.com"))
