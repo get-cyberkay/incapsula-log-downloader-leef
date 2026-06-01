@@ -1,0 +1,47 @@
+services:
+  incapsula-log-downloader:
+    build:
+      context: .
+      dockerfile: dockerfile
+    image: incapsula-log-downloader-leef:latest
+    restart: unless-stopped
+    environment:
+      IMPERVA_API_ID: ${IMPERVA_API_ID:?Set IMPERVA_API_ID in .env}
+      IMPERVA_API_KEY: ${IMPERVA_API_KEY:?Set IMPERVA_API_KEY in .env}
+      IMPERVA_API_URL: ${IMPERVA_API_URL:?Set IMPERVA_API_URL in .env}
+      IMPERVA_INCOMING_DIR: /var/tmp/incapsula/incoming
+      IMPERVA_PROCESS_DIR: /var/tmp/incapsula/process
+      IMPERVA_ARCHIVE_DIR: ""
+      IMPERVA_USE_PROXY: ${IMPERVA_USE_PROXY:-NO}
+      IMPERVA_PROXY_SERVER: ${IMPERVA_PROXY_SERVER:-}
+      IMPERVA_USE_CUSTOM_CA_FILE: ${IMPERVA_USE_CUSTOM_CA_FILE:-NO}
+      IMPERVA_CUSTOM_CA_FILE: ${IMPERVA_CUSTOM_CA_FILE:-}
+      IMPERVA_SYSLOG_ENABLE: "YES"
+      IMPERVA_SYSLOG_CUSTOM: ${IMPERVA_SYSLOG_CUSTOM:-NO}
+      IMPERVA_SYSLOG_ADDRESS: ${IMPERVA_SYSLOG_ADDRESS:?Set IMPERVA_SYSLOG_ADDRESS in .env}
+      IMPERVA_SYSLOG_PORT: ${IMPERVA_SYSLOG_PORT:?Set IMPERVA_SYSLOG_PORT in .env}
+      IMPERVA_SYSLOG_PROTO: ${IMPERVA_SYSLOG_PROTO:-TCP}
+      SYSLOG_TCP_FRAMING: ${SYSLOG_TCP_FRAMING:-newline}
+      IMPERVA_SYSLOG_FORMAT: ${IMPERVA_SYSLOG_FORMAT:-LEEF}
+      IMPERVA_SYSLOG_SECURE: ${IMPERVA_SYSLOG_SECURE:-NO}
+      IMPERVA_SYSLOG_SENDER_HOSTNAME: ${IMPERVA_SYSLOG_SENDER_HOSTNAME:-incapsula_waf}
+      IMPERVA_SPLUNK_HEC: "NO"
+    volumes:
+      - incapsula-config:/etc/incapsula/logs/config
+    tmpfs:
+      - /var/tmp/incapsula/incoming
+      - /var/tmp/incapsula/process
+      - /var/tmp/incapsula/system-logs
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - /usr/local/bin/LogsDownloader.py
+      - -c
+      - /etc/incapsula/logs/config
+      - -l
+      - /var/tmp/incapsula/system-logs
+      - -v
+      - INFO
+
+volumes:
+  incapsula-config:

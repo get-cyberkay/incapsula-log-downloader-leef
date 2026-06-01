@@ -1,6 +1,7 @@
 from SyslogClient import SyslogClient
 from SyslogClientCustom import SyslogClientCustom
 from HttpClient import HttpClient
+import json
 import os
 import time
 from multiprocessing.pool import ThreadPool
@@ -14,6 +15,8 @@ class HandlingLogs:
     RUNNING = True
     _start = None
     pool = ThreadPool()
+    JSON_EVENT_LIST_KEYS = ("logs", "events", "records")
+    JSON_SINGLE_LIST_KEYS = ("data", "items", "results", "result")
 
     def __init__(self, config, logger):
         self.config = config
@@ -106,16 +109,14 @@ class HandlingLogs:
             return False, file
         else:
             file_path = os.path.join(self.config.PROCESS_DIR, file)
-            with open(file_path, "r") as fp:
-                try:
-                    # Get all the lines from the file
-                    messages = fp.readlines()
-                    if not len(messages) > 0:
-                        self.logger.warning("No messages added for {}".format(file))
-                        return False, file
-                except OSError as e:
-                    self.logger.error("Reading content for {}: {}".format(fp, e))
+            try:
+                messages = self.read_messages(file_path)
+                if not len(messages) > 0:
+                    self.logger.warning("No messages added for {}".format(file))
                     return False, file
+            except OSError as e:
+                self.logger.error("Reading content for {}: {}".format(file_path, e))
+                return False, file
 
             if self.remote_logger is not None:
                 self.logger.info("Number of messages added: {}".format(len(messages)))
@@ -172,6 +173,49 @@ class HandlingLogs:
                 self.logger.error(" updating sent.log index. {}".format(e))
         else:
             self.logger.warning(", nothing returned from file send function.")
+
+    @classmethod
+    def read_messages(cls, file_path):
+        with open(file_path, "r", encoding="utf-8") as fp:
+            return cls.normalize_messages(fp.read())
+
+    @classmethod
+    def normalize_messages(cls, content):
+        if not content or not content.strip():
+            return []
+
+        stripped_content = content.strip()
+        try:
+            json_payload = json.loads(stripped_content)
+        except json.JSONDecodeError:
+            return [
+                "{}\n".format(line.rstrip("\r\n"))
+                for line in content.splitlines()
+                if line.strip()
+            ]
+
+        return [
+            "{}\n".format(json.dumps(event, separators=(",", ":"), ensure_ascii=True))
+            for event in cls.json_payload_to_events(json_payload)
+        ]
+
+    @classmethod
+    def json_payload_to_events(cls, payload):
+        if isinstance(payload, list):
+            return payload
+
+        if isinstance(payload, dict):
+            for key in cls.JSON_EVENT_LIST_KEYS:
+                value = payload.get(key)
+                if isinstance(value, list):
+                    return value
+
+            for key in cls.JSON_SINGLE_LIST_KEYS:
+                value = payload.get(key)
+                if len(payload) == 1 and isinstance(value, list):
+                    return value
+
+        return [payload]
 
     def archive_log(self, original, file):
         # Archive the log if sent successfully

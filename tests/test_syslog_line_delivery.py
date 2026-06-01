@@ -149,6 +149,66 @@ class SyslogLineDeliveryTests(unittest.TestCase):
             self.assertIn("message=first leef log", lines[0])
             self.assertIn("message=second leef log", lines[1])
 
+    def test_pretty_json_array_is_ingested_as_one_message_per_event(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            process_dir = os.path.join(temp_dir, "process")
+            os.makedirs(process_dir)
+            log_file = "8998261271655_3.log"
+            with open(os.path.join(process_dir, log_file), "w", encoding="utf-8") as fp:
+                fp.write(
+                    """[
+  {
+    "message": "first array log",
+    "timestamp": 1710000000000,
+    "host": {
+      "name": "site-a"
+    }
+  },
+  {
+    "message": "second array log",
+    "timestamp": 1710000001000,
+    "host": {
+      "name": "site-b"
+    }
+  }
+]
+"""
+                )
+
+            receiver = TcpReceiver()
+            receiver.start()
+
+            logger = logging.getLogger("test_pretty_json_array_ingestion")
+            logger.handlers[:] = []
+            logger.addHandler(logging.NullHandler())
+
+            config = SimpleNamespace(
+                PROCESS_DIR=process_dir,
+                ARCHIVE_DIR="",
+                config_path=temp_dir,
+                SYSLOG_PROTO="TCP",
+                SYSLOG_ENABLE="YES",
+                SYSLOG_CUSTOM="NO",
+                SYSLOG_FORMAT="LEEF",
+                SYSLOG_TCP_FRAMING="newline",
+                SYSLOG_ADDRESS="127.0.0.1",
+                SYSLOG_PORT=str(receiver.port),
+                IMPERVA_SYSLOG_SECURE="NO",
+                SYSLOG_SENDER_HOSTNAME="incapsula_waf",
+                SPLUNK_HEC="NO",
+            )
+
+            result = HandlingLogs(config, logger).send_file(log_file)
+            receiver.join()
+
+            lines = receiver.payload().splitlines()
+            self.assertEqual((True, log_file), result)
+            self.assertEqual(2, len(lines), receiver.payload())
+            self.assertTrue(lines[0].startswith("LEEF:2.0|"), lines[0])
+            self.assertTrue(lines[1].startswith("LEEF:2.0|"), lines[1])
+            self.assertIn("message=first array log", lines[0])
+            self.assertIn("message=second array log", lines[1])
+
 
 if __name__ == "__main__":
     unittest.main()

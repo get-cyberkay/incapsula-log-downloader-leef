@@ -110,7 +110,7 @@ class LogsDownloader:
                 os.remove(os.path.join(self.config.INCOMING_DIR, file))
         if not os.path.exists(self.config.PROCESS_DIR):
             os.makedirs(self.config.PROCESS_DIR)
-        if not os.path.exists(self.config.ARCHIVE_DIR):
+        if self.config.ARCHIVE_DIR and not os.path.exists(self.config.ARCHIVE_DIR):
             os.makedirs(self.config.ARCHIVE_DIR)
         # create a file downloader handler
         self.file_downloader = FileDownloader(self.config, self.logger)

@@ -16,6 +16,7 @@ Original project:
 - Added configurable outbound syslog payload formats: `LEEF`, `CEF`, and `JSON`
 - Added QRadar-friendly `LEEF:2.0` output generation for both CEF input and live JSON log input
 - Added JSON-to-CEF conversion so current Imperva JSON events can still be sent to CEF-based consumers
+- Added raw JSON ingestion for single JSON objects, JSON arrays, common event-list envelopes, and newline-delimited JSON
 - Added config-driven payload selection with `IMPERVA_SYSLOG_FORMAT`
 - Improved large-event handling by using TCP `sendall()` for full writes
 - Added explicit warning when oversized UDP syslog payloads may be truncated or dropped
@@ -28,6 +29,7 @@ Current fork release highlights:
 - Introduced `LEEF` output for QRadar-style syslog ingestion
 - Added outbound format switching with `IMPERVA_SYSLOG_FORMAT`
 - Added JSON-to-CEF conversion for tenants now returning JSON logs
+- Added raw JSON file normalization so pretty JSON and JSON arrays are forwarded as one event per log record
 - Hardened TCP syslog writes for larger events with `sendall()`
 - Added guidance and warnings around UDP truncation risk for oversized syslog messages
 
@@ -107,6 +109,44 @@ You can use `start/stop/status` as any other Linux service
 
 A dockerfile is provided to build your own image locally. At this time, a dockerhub image is not available.
 
+### Docker Compose
+
+The included `docker-compose.yml` runs the downloader with the same forwarding behavior used in local testing:
+
+- downloaded payload files are written to container `tmpfs` paths
+- processed payload files are deleted after successful syslog forwarding
+- `complete.log`, `logs.index`, `sent.log`, and other small state files persist in the `incapsula-config` named volume
+- raw JSON input is normalized before forwarding, so JSON arrays and pretty JSON files do not split across syslog records
+- LEEF records are sent as newline-delimited records that start with `LEEF:2.0|`
+
+Create a production environment file:
+
+```
+cp .env.example .env
+```
+
+Edit `.env` and set the Imperva API values and reachable SIEM/syslog target:
+
+```
+IMPERVA_API_ID=...
+IMPERVA_API_KEY=...
+IMPERVA_API_URL=https://logs1.incapsula.com/123456_456789/
+IMPERVA_SYSLOG_ADDRESS=10.0.10.25
+IMPERVA_SYSLOG_PORT=514
+IMPERVA_SYSLOG_PROTO=TCP
+SYSLOG_TCP_FRAMING=newline
+IMPERVA_SYSLOG_FORMAT=LEEF
+```
+
+Start the service:
+
+```
+docker compose up -d --build
+docker compose logs -f incapsula-log-downloader
+```
+
+Do not use `127.0.0.1` for `IMPERVA_SYSLOG_ADDRESS` in production unless the syslog receiver is inside the same container. If the receiver is on the Docker host, use `host.docker.internal` or the host IP reachable from the container. If the receiver is a SIEM, use the SIEM IP address or DNS name reachable from the Docker network.
+
 ### Configuration
 
 The connector script will look for the following environment variables, and fall back to the configuration file if the environment variable is not set:
@@ -141,6 +181,7 @@ The connector script will look for the following environment variables, and fall
 * IMPERVA_SYSLOG_FORMAT (optional) - Syslog payload format to emit. Supported values are "LEEF", "CEF", and "JSON".
   * Default: "LEEF"
   * LEEF output is emitted as the LEEF record itself, beginning with `LEEF:2.0|`, without a prepended syslog priority/timestamp/host/application header.
+  * Raw JSON input files can be compact newline-delimited JSON, a single JSON object, a JSON array, or a JSON object with a top-level `logs`, `events`, or `records` array. Arrays are sent as one syslog event per array element.
 * IMPERVA_SYSLOG_SECURE (optional) - Use TCP/TLS protocol with syslog server with "YES". 
   * Default: "NO"
 * Large event note - If you need to avoid truncation for large events, prefer `IMPERVA_SYSLOG_PROTO=TCP` or TCP/TLS. UDP delivery may truncate or drop oversized syslog datagrams due to transport limits.

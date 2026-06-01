@@ -1,0 +1,16 @@
+.git
+.env
+venv
+.vscode
+__pycache__/
+*.pyc
+runtime/
+live_actual_system_logs/
+config/Settings.Config
+config/LastKnownDownloadedFileId.txt
+config/complete.log
+config/logs.index
+config/missed_indexes.log
+config/sent.log
+certs/
+config/keys/1/Private.key

@@ -34,9 +34,11 @@ class Config:
             config.PROCESS_DIR = os.environ.get('IMPERVA_PROCESS_DIR',
                                                 os.path.join(config_parser.get("SETTINGS", "IMPERVA_PROCESS_DIR"), "")
                                                 or os.path.join(os.getcwd(), "process"))
-            config.ARCHIVE_DIR = os.environ.get('IMPERVA_ARCHIVE_DIR',
-                                                os.path.join(config_parser.get('SETTINGS', 'IMPERVA_ARCHIVE_DIR'), "")
-                                                or False)
+            archive_dir = os.environ.get(
+                'IMPERVA_ARCHIVE_DIR',
+                config_parser.get('SETTINGS', 'IMPERVA_ARCHIVE_DIR')
+            )
+            config.ARCHIVE_DIR = os.path.join(archive_dir, "") if archive_dir else False
             config.BASE_URL = os.environ.get('IMPERVA_API_URL',
                 config_parser.get("SETTINGS", "IMPERVA_API_URL"))
             config.USE_PROXY = os.environ.get('IMPERVA_USE_PROXY', config_parser.get("SETTINGS", "IMPERVA_USE_PROXY", fallback="NO"))

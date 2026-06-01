@@ -1,5 +1,8 @@
 venv
 .vscode
+.env
+__pycache__/
+*.pyc
 ./config/Settings.Config
 /config/Settings.Config
 /config/LastKnownDownloadedFileId.txt
