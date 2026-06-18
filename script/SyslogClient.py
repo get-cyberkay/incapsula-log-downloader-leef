@@ -30,7 +30,7 @@ class SyslogClient:
     MAX_UDP_PAYLOAD_BYTES = 65000
 
     def __init__(self, host, port, socket_type, logger, secure=False, payload_format="CEF", tcp_framing="octet", ca_file=None,
-                 log_hostname="imperva.com", leef_version="1.0", leef_syslog_header=True):
+                 log_hostname="imperva.com", leef_version="1.0", leef_syslog_header=True, syslog_facility="local0"):
         self.host = host
         self.port = port
         self.socket_type = socket.SOCK_STREAM if socket_type == "TCP" else socket.SOCK_DGRAM
@@ -53,8 +53,33 @@ class SyslogClient:
         # When True, LEEF records are wrapped in a full RFC3164 syslog header
         # (<pri> timestamp hostname app LEEF:...). When False, the bare LEEF record is sent.
         self.leef_syslog_header = leef_syslog_header
+        # Syslog facility used to compute the RFC3164 PRI (facility * 8 + severity).
+        # Severity is fixed at "info" (6); facility defaults to local0 (16) -> PRI 134.
+        self.facility = self.resolve_facility(syslog_facility)
         self.leef_formatter = LeefFormatter(self.logger, leef_version=leef_version)
         self.cef_formatter = CefFormatter(self.logger)
+
+    def resolve_facility(self, facility):
+        """Resolve a syslog facility supplied as a name (e.g. 'local0', 'daemon') or a
+        numeric code (0-23) into its integer code. Falls back to local0 when unset or
+        unrecognised."""
+        if facility is None or facility == "":
+            return FACILITY['local0']
+        if isinstance(facility, int):
+            return facility
+        facility = str(facility).strip().lower()
+        if facility.isdigit():
+            return int(facility)
+        if facility in FACILITY:
+            return FACILITY[facility]
+        self.logger.warning(
+            "Unknown SYSLOG_FACILITY value '%s'. Falling back to local0.", facility
+        )
+        return FACILITY['local0']
+
+    def get_priority(self):
+        """RFC3164 PRI value: facility * 8 + severity (severity fixed at info=6)."""
+        return "<{}>".format(LEVEL['info'] + self.facility * 8)
 
     def wrap_secure_socket(self, sock):
         """Wrap a TCP socket in a TLS context that verifies the server certificate.
@@ -97,8 +122,9 @@ class SyslogClient:
             return message
         timestamp = self.get_time(message)
         hostname = hostname or self.resolve_hostname(message)
-        application = "cwaf"
-        return "{} {} {} {} {}".format(priority, timestamp, hostname, application, message)
+        # RFC3164 header without an APP-NAME/tag token: the hostname is the only
+        # field the SIEM uses as the Log Source Identifier.
+        return "{} {} {} {}".format(priority, timestamp, hostname, message)
 
     # Send the messages
     def send(self, data):
@@ -107,7 +133,7 @@ class SyslogClient:
         """
         messages = []
         sock = socket.socket(socket.AF_INET, self.socket_type)
-        priority = "<{}>".format(LEVEL['info'] + FACILITY['daemon'] * 8)
+        priority = self.get_priority()
 
         if self.socket_type == socket.SOCK_STREAM:
             # Loop over the data/messages array and create the relevant object(s) to be sent.

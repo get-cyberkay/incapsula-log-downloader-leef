@@ -8,9 +8,10 @@ with its description.
 The record banner is `LEEF:<leef_version>|Vendor|Product|Version|eventID|attributes`,
 where `<leef_version>` is `1.0` by default (configurable via `IMPERVA_LEEF_VERSION`).
 When delivered over syslog the record is, by default, prefixed with an RFC3164 header
-(`<pri> timestamp hostname cwaf LEEF:...`); the hostname comes from
-`IMPERVA_SYSLOG_SENDER_HOSTNAME` and the header can be disabled with
-`IMPERVA_LEEF_SYSLOG_HEADER=NO`.
+(`<pri> timestamp hostname LEEF:...`); the hostname is the token the SIEM uses as the
+Log Source Identifier and comes from `IMPERVA_SYSLOG_SENDER_HOSTNAME`. The `<pri>` value
+is `facility * 8 + 6` (info severity), where the facility is set by `IMPERVA_SYSLOG_FACILITY`
+(default `local0` -> `<134>`). The header can be disabled with `IMPERVA_LEEF_SYSLOG_HEADER=NO`.
 
 | Placeholder | Description                                                     |
 | ----------- | --------------------------------------------------------------- |

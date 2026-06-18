@@ -117,7 +117,7 @@ The included `docker-compose.yml` runs the downloader with the same forwarding b
 - processed payload files are deleted after successful syslog forwarding
 - `complete.log`, `logs.index`, `sent.log`, and other small state files persist in the `incapsula-config` named volume
 - raw JSON input is normalized before forwarding, so JSON arrays and pretty JSON files do not split across syslog records
-- LEEF records are sent as newline-delimited records wrapped in an RFC3164 syslog header (`<pri> timestamp hostname cwaf LEEF:1.0|...`)
+- LEEF records are sent as newline-delimited records wrapped in an RFC3164 syslog header (`<pri> timestamp hostname LEEF:1.0|...`)
 
 Create a production environment file:
 
@@ -180,14 +180,16 @@ The connector script will look for the following environment variables, and fall
   * Default: "octet"
 * IMPERVA_SYSLOG_FORMAT (optional) - Syslog payload format to emit. Supported values are "LEEF", "CEF", and "JSON".
   * Default: "LEEF"
-  * By default LEEF output is wrapped in an RFC3164 syslog header (`<pri> timestamp hostname cwaf LEEF:1.0|...`). The header hostname is taken from `IMPERVA_SYSLOG_SENDER_HOSTNAME`. Set `IMPERVA_LEEF_SYSLOG_HEADER=NO` to emit the bare LEEF record with no header.
+  * By default LEEF output is wrapped in an RFC3164 syslog header (`<pri> timestamp hostname LEEF:1.0|...`). The header hostname is the Log Source Identifier the SIEM uses and is taken from `IMPERVA_SYSLOG_SENDER_HOSTNAME`. Set `IMPERVA_LEEF_SYSLOG_HEADER=NO` to emit the bare LEEF record with no header.
   * Raw JSON input files can be compact newline-delimited JSON, a single JSON object, a JSON array, or a JSON object with a top-level `logs`, `events`, or `records` array. Arrays are sent as one syslog event per array element.
 * IMPERVA_SYSLOG_SENDER_HOSTNAME (optional) - Hostname placed in the LEEF/CEF syslog header. Set this to your own value (e.g. "incapsula_waf") to use it verbatim. When left at the default the hostname is derived from the event payload.
   * Default: "imperva.com"
 * IMPERVA_LEEF_VERSION (optional) - LEEF specification version emitted in the record banner (`LEEF:<version>|...`). Supported values are "1.0" and "2.0".
   * Default: "1.0"
-* IMPERVA_LEEF_SYSLOG_HEADER (optional) - Wrap LEEF records in an RFC3164 syslog header. Set to "NO" to send bare `LEEF:...` records with no priority/timestamp/host/application prefix.
+* IMPERVA_LEEF_SYSLOG_HEADER (optional) - Wrap LEEF records in an RFC3164 syslog header. Set to "NO" to send bare `LEEF:...` records with no priority/timestamp/host prefix.
   * Default: "YES"
+* IMPERVA_SYSLOG_FACILITY (optional) - Syslog facility used to compute the RFC3164 PRI (facility * 8 + severity, severity fixed at info=6). Accepts a name (e.g. "local0", "daemon", "local4") or a numeric code (0-23).
+  * Default: "local0" (PRI `<134>`)
 * IMPERVA_SYSLOG_SECURE (optional) - Use TCP/TLS protocol with syslog server with "YES". 
   * Default: "NO"
 * Large event note - If you need to avoid truncation for large events, prefer `IMPERVA_SYSLOG_PROTO=TCP` or TCP/TLS. UDP delivery may truncate or drop oversized syslog datagrams due to transport limits.

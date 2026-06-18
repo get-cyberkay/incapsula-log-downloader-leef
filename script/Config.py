@@ -71,6 +71,7 @@ class Config:
             config.SYSLOG_SENDER_HOSTNAME = resolve('IMPERVA_SYSLOG_SENDER_HOSTNAME', 'IMPERVA_SYSLOG_SENDER_HOSTNAME', fallback="imperva.com")
             config.LEEF_VERSION = resolve('IMPERVA_LEEF_VERSION', 'IMPERVA_LEEF_VERSION', fallback="1.0")
             config.LEEF_SYSLOG_HEADER = resolve('IMPERVA_LEEF_SYSLOG_HEADER', 'IMPERVA_LEEF_SYSLOG_HEADER', fallback="YES")
+            config.SYSLOG_FACILITY = resolve('IMPERVA_SYSLOG_FACILITY', 'IMPERVA_SYSLOG_FACILITY', fallback="local0")
             config.SPLUNK_HEC = resolve('IMPERVA_SPLUNK_HEC', 'IMPERVA_SPLUNK_HEC', fallback="NO")
             config.SPLUNK_HEC_IP = resolve('IMPERVA_SPLUNK_HEC_IP', 'IMPERVA_SPLUNK_HEC_IP', fallback="")
             config.SPLUNK_HEC_PORT = resolve('IMPERVA_SPLUNK_HEC_PORT', 'IMPERVA_SPLUNK_HEC_PORT', fallback="")

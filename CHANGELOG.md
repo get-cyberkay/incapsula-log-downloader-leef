@@ -4,6 +4,8 @@
 Features:
 - LEEF records now ship with a configurable RFC3164 syslog header; the header hostname is taken from `IMPERVA_SYSLOG_SENDER_HOSTNAME` and the header can be disabled with `IMPERVA_LEEF_SYSLOG_HEADER=NO`
 - added `IMPERVA_LEEF_VERSION` to select the LEEF banner version (default `1.0`, previously hardcoded `2.0`)
+- the RFC3164 syslog header no longer emits a hardcoded `cwaf` APP-NAME tag; the configured hostname is now the sole Log Source Identifier (`<pri> timestamp hostname payload`)
+- added `IMPERVA_SYSLOG_FACILITY` to configure the syslog facility used in the PRI (accepts a name or numeric code); default is now `local0` (PRI `<134>`), previously hardcoded `daemon` (PRI `<30>`)
 
 ## Fork Release 1.0.0
 Features:

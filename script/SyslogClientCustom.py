@@ -5,19 +5,6 @@ import ssl
 from SyslogClient import SyslogClient
 
 
-FACILITY = {
-    'kern': 0, 'user': 1, 'mail': 2, 'daemon': 3,
-    'auth': 4, 'syslog': 5, 'lpr': 6, 'news': 7,
-    'uucp': 8, 'cron': 9, 'authpriv': 10, 'ftp': 11,
-    'local0': 16, 'local1': 17, 'local2': 18, 'local3': 19,
-    'local4': 20, 'local5': 21, 'local6': 22, 'local7': 23,
-}
-
-LEVEL = {
-    'emerg': 0, 'alert': 1, 'crit': 2, 'err': 3,
-    'warning': 4, 'notice': 5, 'info': 6, 'debug': 7
-}
-
 """
 Syslog - For sending TCP/UDP Syslog messages with QRadar-friendly LEEF payloads.
 """
@@ -25,9 +12,10 @@ Syslog - For sending TCP/UDP Syslog messages with QRadar-friendly LEEF payloads.
 
 class SyslogClientCustom(SyslogClient):
     def __init__(self, host, port, socket_type, logger, log_hostname="imperva.com", secure=False, payload_format="CEF", tcp_framing="octet", ca_file=None,
-                 leef_version="1.0", leef_syslog_header=True):
+                 leef_version="1.0", leef_syslog_header=True, syslog_facility="local0"):
         SyslogClient.__init__(self, host, port, socket_type, logger, secure, payload_format, tcp_framing, ca_file,
-                              log_hostname=log_hostname, leef_version=leef_version, leef_syslog_header=leef_syslog_header)
+                              log_hostname=log_hostname, leef_version=leef_version, leef_syslog_header=leef_syslog_header,
+                              syslog_facility=syslog_facility)
         self.logger.debug("LEEF syslog enabled. Log Hostname: {}".format(self.log_hostname))
 
     def send(self, data):
@@ -36,7 +24,7 @@ class SyslogClientCustom(SyslogClient):
         """
         messages = []
         sock = socket.socket(socket.AF_INET, self.socket_type)
-        priority = "<{}>".format(LEVEL['info'] + FACILITY['daemon'] * 8)
+        priority = self.get_priority()
 
         if self.socket_type == socket.SOCK_STREAM:
             for message in data:

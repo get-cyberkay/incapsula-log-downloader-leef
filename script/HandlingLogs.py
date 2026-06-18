@@ -41,6 +41,7 @@ class HandlingLogs:
 
             leef_version = getattr(self.config, "LEEF_VERSION", "1.0") or "1.0"
             leef_syslog_header = (getattr(self.config, "LEEF_SYSLOG_HEADER", "YES") or "YES").upper() == "YES"
+            syslog_facility = getattr(self.config, "SYSLOG_FACILITY", "local0") or "local0"
 
             if self.config.SYSLOG_CUSTOM == 'YES':
                 self.logger.info(
@@ -50,7 +51,8 @@ class HandlingLogs:
                     self.config.SYSLOG_ADDRESS, self.config.SYSLOG_PORT, proto, self.logger,
                     self.config.SYSLOG_SENDER_HOSTNAME, secure,
                     self.config.SYSLOG_FORMAT, self.config.SYSLOG_TCP_FRAMING, ca_file,
-                    leef_version=leef_version, leef_syslog_header=leef_syslog_header
+                    leef_version=leef_version, leef_syslog_header=leef_syslog_header,
+                    syslog_facility=syslog_facility
                 )
             else:
                 self.logger.info('Syslog enabled, using %s%s', proto, "/TLS" if secure else "")
@@ -58,7 +60,8 @@ class HandlingLogs:
                     self.config.SYSLOG_ADDRESS, self.config.SYSLOG_PORT, proto, self.logger,
                     secure, self.config.SYSLOG_FORMAT, self.config.SYSLOG_TCP_FRAMING, ca_file,
                     log_hostname=self.config.SYSLOG_SENDER_HOSTNAME,
-                    leef_version=leef_version, leef_syslog_header=leef_syslog_header
+                    leef_version=leef_version, leef_syslog_header=leef_syslog_header,
+                    syslog_facility=syslog_facility
                 )
 
     def watch_files(self):

@@ -147,11 +147,55 @@ class SyslogLineDeliveryTests(unittest.TestCase):
             self.assertEqual(2, len(lines), receiver.payload())
             # Each record is wrapped in an RFC3164 syslog header carrying the configured
             # hostname, followed by a LEEF:1.0 banner.
-            self.assertTrue(lines[0].startswith("<30>"), lines[0])
-            self.assertIn(" incapsula_waf cwaf LEEF:1.0|", lines[0])
-            self.assertIn(" incapsula_waf cwaf LEEF:1.0|", lines[1])
+            # Default facility is local0 (16): PRI = 16*8 + 6 (info) = 134.
+            self.assertTrue(lines[0].startswith("<134>"), lines[0])
+            self.assertIn(" incapsula_waf LEEF:1.0|", lines[0])
+            self.assertIn(" incapsula_waf LEEF:1.0|", lines[1])
             self.assertIn("message=first leef log", lines[0])
             self.assertIn("message=second leef log", lines[1])
+
+    def test_configured_facility_changes_syslog_priority(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            process_dir = os.path.join(temp_dir, "process")
+            os.makedirs(process_dir)
+            log_file = "8998261271655_5.log"
+            with open(os.path.join(process_dir, log_file), "w", encoding="utf-8") as fp:
+                fp.write('{"message":"first leef log","timestamp":1710000000000,"host":{"name":"site-a"}}\n')
+
+            receiver = TcpReceiver()
+            receiver.start()
+
+            logger = logging.getLogger("test_configured_facility")
+            logger.handlers[:] = []
+            logger.addHandler(logging.NullHandler())
+
+            config = SimpleNamespace(
+                PROCESS_DIR=process_dir,
+                ARCHIVE_DIR="",
+                config_path=temp_dir,
+                SYSLOG_PROTO="TCP",
+                SYSLOG_ENABLE="YES",
+                SYSLOG_CUSTOM="NO",
+                SYSLOG_FORMAT="LEEF",
+                SYSLOG_TCP_FRAMING="newline",
+                SYSLOG_ADDRESS="127.0.0.1",
+                SYSLOG_PORT=str(receiver.port),
+                IMPERVA_SYSLOG_SECURE="NO",
+                SYSLOG_SENDER_HOSTNAME="incapsula_waf",
+                LEEF_VERSION="1.0",
+                LEEF_SYSLOG_HEADER="YES",
+                SYSLOG_FACILITY="local4",
+                SPLUNK_HEC="NO",
+            )
+
+            result = HandlingLogs(config, logger).send_file(log_file)
+            receiver.join()
+
+            lines = receiver.payload().splitlines()
+            self.assertEqual((True, log_file), result)
+            # local4 (20): PRI = 20*8 + 6 (info) = 166.
+            self.assertTrue(lines[0].startswith("<166>"), lines[0])
+            self.assertIn(" incapsula_waf LEEF:1.0|", lines[0])
 
     def test_leef_header_disabled_sends_bare_records(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -195,7 +239,7 @@ class SyslogLineDeliveryTests(unittest.TestCase):
             self.assertEqual(2, len(lines), receiver.payload())
             self.assertTrue(lines[0].startswith("LEEF:1.0|"), lines[0])
             self.assertTrue(lines[1].startswith("LEEF:1.0|"), lines[1])
-            self.assertNotIn("<30>", lines[0])
+            self.assertNotIn("<134>", lines[0])
             self.assertIn("message=first leef log", lines[0])
             self.assertIn("message=second leef log", lines[1])
 
@@ -256,8 +300,8 @@ class SyslogLineDeliveryTests(unittest.TestCase):
             lines = receiver.payload().splitlines()
             self.assertEqual((True, log_file), result)
             self.assertEqual(2, len(lines), receiver.payload())
-            self.assertIn(" incapsula_waf cwaf LEEF:1.0|", lines[0])
-            self.assertIn(" incapsula_waf cwaf LEEF:1.0|", lines[1])
+            self.assertIn(" incapsula_waf LEEF:1.0|", lines[0])
+            self.assertIn(" incapsula_waf LEEF:1.0|", lines[1])
             self.assertIn("message=first array log", lines[0])
             self.assertIn("message=second array log", lines[1])
 
