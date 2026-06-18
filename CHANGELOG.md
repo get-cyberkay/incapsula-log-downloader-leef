@@ -1,5 +1,10 @@
 # CHANGELOG.md
 
+## Unreleased
+Features:
+- LEEF records now ship with a configurable RFC3164 syslog header; the header hostname is taken from `IMPERVA_SYSLOG_SENDER_HOSTNAME` and the header can be disabled with `IMPERVA_LEEF_SYSLOG_HEADER=NO`
+- added `IMPERVA_LEEF_VERSION` to select the LEEF banner version (default `1.0`, previously hardcoded `2.0`)
+
 ## Fork Release 1.0.0
 Features:
 - added configurable outbound syslog formats: LEEF, CEF, and JSON

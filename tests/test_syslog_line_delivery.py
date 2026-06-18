@@ -105,7 +105,7 @@ class SyslogLineDeliveryTests(unittest.TestCase):
             self.assertIn('"message":"first log"', lines[0])
             self.assertIn('"message":"second log"', lines[1])
 
-    def test_leef_tcp_newline_framing_sends_records_without_syslog_prefix(self):
+    def test_leef_tcp_records_carry_syslog_header_with_configured_hostname(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             process_dir = os.path.join(temp_dir, "process")
             os.makedirs(process_dir)
@@ -134,6 +134,8 @@ class SyslogLineDeliveryTests(unittest.TestCase):
                 SYSLOG_PORT=str(receiver.port),
                 IMPERVA_SYSLOG_SECURE="NO",
                 SYSLOG_SENDER_HOSTNAME="incapsula_waf",
+                LEEF_VERSION="1.0",
+                LEEF_SYSLOG_HEADER="YES",
                 SPLUNK_HEC="NO",
             )
 
@@ -143,8 +145,56 @@ class SyslogLineDeliveryTests(unittest.TestCase):
             lines = receiver.payload().splitlines()
             self.assertEqual((True, log_file), result)
             self.assertEqual(2, len(lines), receiver.payload())
-            self.assertTrue(lines[0].startswith("LEEF:2.0|"), lines[0])
-            self.assertTrue(lines[1].startswith("LEEF:2.0|"), lines[1])
+            # Each record is wrapped in an RFC3164 syslog header carrying the configured
+            # hostname, followed by a LEEF:1.0 banner.
+            self.assertTrue(lines[0].startswith("<30>"), lines[0])
+            self.assertIn(" incapsula_waf cwaf LEEF:1.0|", lines[0])
+            self.assertIn(" incapsula_waf cwaf LEEF:1.0|", lines[1])
+            self.assertIn("message=first leef log", lines[0])
+            self.assertIn("message=second leef log", lines[1])
+
+    def test_leef_header_disabled_sends_bare_records(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            process_dir = os.path.join(temp_dir, "process")
+            os.makedirs(process_dir)
+            log_file = "8998261271655_4.log"
+            with open(os.path.join(process_dir, log_file), "w", encoding="utf-8") as fp:
+                fp.write('{"message":"first leef log","timestamp":1710000000000,"host":{"name":"site-a"}}\n')
+                fp.write('{"message":"second leef log","timestamp":1710000001000,"host":{"name":"site-b"}}\n')
+
+            receiver = TcpReceiver()
+            receiver.start()
+
+            logger = logging.getLogger("test_leef_header_disabled")
+            logger.handlers[:] = []
+            logger.addHandler(logging.NullHandler())
+
+            config = SimpleNamespace(
+                PROCESS_DIR=process_dir,
+                ARCHIVE_DIR="",
+                config_path=temp_dir,
+                SYSLOG_PROTO="TCP",
+                SYSLOG_ENABLE="YES",
+                SYSLOG_CUSTOM="NO",
+                SYSLOG_FORMAT="LEEF",
+                SYSLOG_TCP_FRAMING="newline",
+                SYSLOG_ADDRESS="127.0.0.1",
+                SYSLOG_PORT=str(receiver.port),
+                IMPERVA_SYSLOG_SECURE="NO",
+                SYSLOG_SENDER_HOSTNAME="incapsula_waf",
+                LEEF_VERSION="1.0",
+                LEEF_SYSLOG_HEADER="NO",
+                SPLUNK_HEC="NO",
+            )
+
+            result = HandlingLogs(config, logger).send_file(log_file)
+            receiver.join()
+
+            lines = receiver.payload().splitlines()
+            self.assertEqual((True, log_file), result)
+            self.assertEqual(2, len(lines), receiver.payload())
+            self.assertTrue(lines[0].startswith("LEEF:1.0|"), lines[0])
+            self.assertTrue(lines[1].startswith("LEEF:1.0|"), lines[1])
             self.assertNotIn("<30>", lines[0])
             self.assertIn("message=first leef log", lines[0])
             self.assertIn("message=second leef log", lines[1])
@@ -195,6 +245,8 @@ class SyslogLineDeliveryTests(unittest.TestCase):
                 SYSLOG_PORT=str(receiver.port),
                 IMPERVA_SYSLOG_SECURE="NO",
                 SYSLOG_SENDER_HOSTNAME="incapsula_waf",
+                LEEF_VERSION="1.0",
+                LEEF_SYSLOG_HEADER="YES",
                 SPLUNK_HEC="NO",
             )
 
@@ -204,8 +256,8 @@ class SyslogLineDeliveryTests(unittest.TestCase):
             lines = receiver.payload().splitlines()
             self.assertEqual((True, log_file), result)
             self.assertEqual(2, len(lines), receiver.payload())
-            self.assertTrue(lines[0].startswith("LEEF:2.0|"), lines[0])
-            self.assertTrue(lines[1].startswith("LEEF:2.0|"), lines[1])
+            self.assertIn(" incapsula_waf cwaf LEEF:1.0|", lines[0])
+            self.assertIn(" incapsula_waf cwaf LEEF:1.0|", lines[1])
             self.assertIn("message=first array log", lines[0])
             self.assertIn("message=second array log", lines[1])
 

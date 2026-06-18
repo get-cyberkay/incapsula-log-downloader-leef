@@ -7,11 +7,14 @@ class LeefFormatter:
     HEADER_DELIMITER = "\t"
     KEY_SANITIZER = re.compile(r"[^A-Za-z0-9_]")
 
-    def __init__(self, logger, vendor="Imperva", product="CloudWAF", version="1.0"):
+    def __init__(self, logger, vendor="Imperva", product="CloudWAF", version="1.0", leef_version="1.0"):
         self.logger = logger
         self.vendor = vendor
         self.product = product
         self.version = version
+        # LEEF specification version emitted in the record banner (e.g. "1.0" or "2.0").
+        # This is distinct from `version`, which is the device/product version header field.
+        self.leef_version = leef_version or "1.0"
 
     def format(self, message):
         message = (message or "").rstrip("\r\n")
@@ -104,7 +107,8 @@ class LeefFormatter:
                 continue
             safe_key = self._sanitize_key(key)
             encoded_fields.append("{}={}".format(safe_key, self._escape_value(fields[key])))
-        return "LEEF:2.0|{}|{}|{}|{}|{}".format(
+        return "LEEF:{}|{}|{}|{}|{}|{}".format(
+            self.leef_version,
             self._escape_header(vendor),
             self._escape_header(product),
             self._escape_header(version),

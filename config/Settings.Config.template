@@ -18,6 +18,12 @@ SYSLOG_TCP_FRAMING=octet
 IMPERVA_SYSLOG_FORMAT=LEEF
 IMPERVA_SYSLOG_SECURE=
 IMPERVA_SYSLOG_SENDER_HOSTNAME=
+# LEEF specification version emitted in the record banner (LEEF:<version>|...). Default 1.0.
+IMPERVA_LEEF_VERSION=1.0
+# Wrap LEEF records in an RFC3164 syslog header (<pri> timestamp hostname cwaf LEEF:...).
+# Set to NO to emit bare LEEF records with no syslog header. Default YES.
+# The header hostname is taken from IMPERVA_SYSLOG_SENDER_HOSTNAME (when set to a non-default value).
+IMPERVA_LEEF_SYSLOG_HEADER=YES
 IMPERVA_SPLUNK_HEC=
 IMPERVA_SPLUNK_HEC_IP=
 IMPERVA_SPLUNK_HEC_PORT=

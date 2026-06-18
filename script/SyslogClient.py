@@ -29,7 +29,8 @@ Syslog - For sending TCP Syslog messages via socket class
 class SyslogClient:
     MAX_UDP_PAYLOAD_BYTES = 65000
 
-    def __init__(self, host, port, socket_type, logger, secure=False, payload_format="CEF", tcp_framing="octet", ca_file=None):
+    def __init__(self, host, port, socket_type, logger, secure=False, payload_format="CEF", tcp_framing="octet", ca_file=None,
+                 log_hostname="imperva.com", leef_version="1.0", leef_syslog_header=True):
         self.host = host
         self.port = port
         self.socket_type = socket.SOCK_STREAM if socket_type == "TCP" else socket.SOCK_DGRAM
@@ -45,7 +46,14 @@ class SyslogClient:
                 self.tcp_framing
             )
             self.tcp_framing = "octet"
-        self.leef_formatter = LeefFormatter(self.logger)
+        # Hostname placed in the syslog header. An operator-supplied value (anything other
+        # than the "imperva.com" default) is used verbatim; the default falls back to a
+        # hostname derived from the message payload.
+        self.log_hostname = log_hostname or "imperva.com"
+        # When True, LEEF records are wrapped in a full RFC3164 syslog header
+        # (<pri> timestamp hostname app LEEF:...). When False, the bare LEEF record is sent.
+        self.leef_syslog_header = leef_syslog_header
+        self.leef_formatter = LeefFormatter(self.logger, leef_version=leef_version)
         self.cef_formatter = CefFormatter(self.logger)
 
     def wrap_secure_socket(self, sock):
@@ -71,13 +79,24 @@ class SyslogClient:
             sock.sendall(self.frame_tcp_message(message))
 
     def should_send_payload_only(self, message):
-        return self.payload_format == "LEEF" and message.startswith("LEEF:")
+        return (
+            self.payload_format == "LEEF"
+            and message.startswith("LEEF:")
+            and not self.leef_syslog_header
+        )
+
+    def resolve_hostname(self, message):
+        """Use the operator-configured hostname when one is set, otherwise derive it
+        from the message payload (sourceServiceName / host fields)."""
+        if not self.log_hostname or self.log_hostname == "imperva.com":
+            return self.get_hostname(message)
+        return self.log_hostname
 
     def build_wire_message(self, message, priority, hostname=None):
         if self.should_send_payload_only(message):
             return message
         timestamp = self.get_time(message)
-        hostname = hostname or self.get_hostname(message)
+        hostname = hostname or self.resolve_hostname(message)
         application = "cwaf"
         return "{} {} {} {} {}".format(priority, timestamp, hostname, application, message)
 

@@ -39,6 +39,9 @@ class HandlingLogs:
             if secure and getattr(self.config, "USE_CUSTOM_CA_FILE", "NO") == "YES":
                 ca_file = getattr(self.config, "CUSTOM_CA_FILE", None)
 
+            leef_version = getattr(self.config, "LEEF_VERSION", "1.0") or "1.0"
+            leef_syslog_header = (getattr(self.config, "LEEF_SYSLOG_HEADER", "YES") or "YES").upper() == "YES"
+
             if self.config.SYSLOG_CUSTOM == 'YES':
                 self.logger.info(
                     'Custom LEEF Syslog enabled, using %s%s', proto, "/TLS" if secure else ""
@@ -46,13 +49,16 @@ class HandlingLogs:
                 self.remote_logger = SyslogClientCustom(
                     self.config.SYSLOG_ADDRESS, self.config.SYSLOG_PORT, proto, self.logger,
                     self.config.SYSLOG_SENDER_HOSTNAME, secure,
-                    self.config.SYSLOG_FORMAT, self.config.SYSLOG_TCP_FRAMING, ca_file
+                    self.config.SYSLOG_FORMAT, self.config.SYSLOG_TCP_FRAMING, ca_file,
+                    leef_version=leef_version, leef_syslog_header=leef_syslog_header
                 )
             else:
                 self.logger.info('Syslog enabled, using %s%s', proto, "/TLS" if secure else "")
                 self.remote_logger = SyslogClient(
                     self.config.SYSLOG_ADDRESS, self.config.SYSLOG_PORT, proto, self.logger,
-                    secure, self.config.SYSLOG_FORMAT, self.config.SYSLOG_TCP_FRAMING, ca_file
+                    secure, self.config.SYSLOG_FORMAT, self.config.SYSLOG_TCP_FRAMING, ca_file,
+                    log_hostname=self.config.SYSLOG_SENDER_HOSTNAME,
+                    leef_version=leef_version, leef_syslog_header=leef_syslog_header
                 )
 
     def watch_files(self):

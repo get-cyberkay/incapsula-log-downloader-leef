@@ -24,15 +24,11 @@ Syslog - For sending TCP/UDP Syslog messages with QRadar-friendly LEEF payloads.
 
 
 class SyslogClientCustom(SyslogClient):
-    def __init__(self, host, port, socket_type, logger, log_hostname="imperva.com", secure=False, payload_format="CEF", tcp_framing="octet", ca_file=None):
-        SyslogClient.__init__(self, host, port, socket_type, logger, secure, payload_format, tcp_framing, ca_file)
-        self.log_hostname = log_hostname
-        self.logger.debug("LEEF syslog enabled. Log Hostname: {}".format(log_hostname))
-
-    def resolve_hostname(self, message):
-        if self.log_hostname == "imperva.com":
-            return self.get_hostname(message)
-        return self.log_hostname
+    def __init__(self, host, port, socket_type, logger, log_hostname="imperva.com", secure=False, payload_format="CEF", tcp_framing="octet", ca_file=None,
+                 leef_version="1.0", leef_syslog_header=True):
+        SyslogClient.__init__(self, host, port, socket_type, logger, secure, payload_format, tcp_framing, ca_file,
+                              log_hostname=log_hostname, leef_version=leef_version, leef_syslog_header=leef_syslog_header)
+        self.logger.debug("LEEF syslog enabled. Log Hostname: {}".format(self.log_hostname))
 
     def send(self, data):
         """
