@@ -154,6 +154,95 @@ class SyslogLineDeliveryTests(unittest.TestCase):
             self.assertIn("message=first leef log", lines[0])
             self.assertIn("message=second leef log", lines[1])
 
+    def test_configured_hostname_overrides_payload_host_as_log_source_identifier(self):
+        # The operator-configured hostname must win over any host name carried in the
+        # payload, so it is the token the SIEM keys on as the Log Source Identifier.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            process_dir = os.path.join(temp_dir, "process")
+            os.makedirs(process_dir)
+            log_file = "8998261271655_6.log"
+            with open(os.path.join(process_dir, log_file), "w", encoding="utf-8") as fp:
+                fp.write('{"message":"req passed","timestamp":1710000000000,"host":{"name":"payload-host"}}\n')
+
+            receiver = TcpReceiver()
+            receiver.start()
+
+            logger = logging.getLogger("test_configured_hostname_lsi")
+            logger.handlers[:] = []
+            logger.addHandler(logging.NullHandler())
+
+            config = SimpleNamespace(
+                PROCESS_DIR=process_dir,
+                ARCHIVE_DIR="",
+                config_path=temp_dir,
+                SYSLOG_PROTO="TCP",
+                SYSLOG_ENABLE="YES",
+                SYSLOG_CUSTOM="NO",
+                SYSLOG_FORMAT="LEEF",
+                SYSLOG_TCP_FRAMING="newline",
+                SYSLOG_ADDRESS="127.0.0.1",
+                SYSLOG_PORT=str(receiver.port),
+                IMPERVA_SYSLOG_SECURE="NO",
+                SYSLOG_SENDER_HOSTNAME="siem-edge-01",
+                LEEF_VERSION="1.0",
+                LEEF_SYSLOG_HEADER="YES",
+                SPLUNK_HEC="NO",
+            )
+
+            result = HandlingLogs(config, logger).send_file(log_file)
+            receiver.join()
+
+            lines = receiver.payload().splitlines()
+            self.assertEqual((True, log_file), result)
+            self.assertEqual(1, len(lines), receiver.payload())
+            # The configured hostname sits directly before the LEEF banner (the RFC3164
+            # HOSTNAME field) and overrides the payload-derived host.
+            self.assertIn(" siem-edge-01 LEEF:1.0|", lines[0])
+            self.assertNotIn(" payload-host LEEF:1.0|", lines[0])
+
+    def test_default_hostname_falls_back_to_payload_host(self):
+        # When the hostname is left at the default, it is derived from the payload so
+        # the LSI is never empty.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            process_dir = os.path.join(temp_dir, "process")
+            os.makedirs(process_dir)
+            log_file = "8998261271655_7.log"
+            with open(os.path.join(process_dir, log_file), "w", encoding="utf-8") as fp:
+                fp.write('{"message":"req passed","timestamp":1710000000000,"host":{"name":"payload-host"}}\n')
+
+            receiver = TcpReceiver()
+            receiver.start()
+
+            logger = logging.getLogger("test_default_hostname_fallback")
+            logger.handlers[:] = []
+            logger.addHandler(logging.NullHandler())
+
+            config = SimpleNamespace(
+                PROCESS_DIR=process_dir,
+                ARCHIVE_DIR="",
+                config_path=temp_dir,
+                SYSLOG_PROTO="TCP",
+                SYSLOG_ENABLE="YES",
+                SYSLOG_CUSTOM="NO",
+                SYSLOG_FORMAT="LEEF",
+                SYSLOG_TCP_FRAMING="newline",
+                SYSLOG_ADDRESS="127.0.0.1",
+                SYSLOG_PORT=str(receiver.port),
+                IMPERVA_SYSLOG_SECURE="NO",
+                SYSLOG_SENDER_HOSTNAME="imperva.com",
+                LEEF_VERSION="1.0",
+                LEEF_SYSLOG_HEADER="YES",
+                SPLUNK_HEC="NO",
+            )
+
+            result = HandlingLogs(config, logger).send_file(log_file)
+            receiver.join()
+
+            lines = receiver.payload().splitlines()
+            self.assertEqual((True, log_file), result)
+            self.assertEqual(1, len(lines), receiver.payload())
+            self.assertIn(" payload-host LEEF:1.0|", lines[0])
+
     def test_configured_facility_changes_syslog_priority(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             process_dir = os.path.join(temp_dir, "process")
